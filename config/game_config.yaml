@@ -1,0 +1,34 @@
+# ============================================================================
+#  Pursuit-evasion game configuration  (pursuer = HJB, evader = APF)
+# ----------------------------------------------------------------------------
+#  Sits on top of vessel_config.yaml. Both vessels use the Sookshma 3-DOF
+#  Fossen dynamics defined there; this file adds only the game-level quantities:
+#  the capture set, the time horizon, the evader's artificial-potential-field
+#  (APF) feedback law, and the pursuer's inscribed-ellipse actuator model used
+#  to build the Hamilton-Jacobi-Bellman (HJB) Hamiltonian.
+# ============================================================================
+
+game:
+  capture_radius_m: 1.0        # rho : capture disc radius.  ell(zeta)=sqrt(X^2+Y^2)-rho
+  horizon_s: 20.0              # T   : reachability horizon, value solved on t in [-T, 0]
+  hamiltonian_eps: 1.0e-6      # eps_H : rounds the norm corner in H at c=0 (NOT a viscosity term)
+
+# --- which identified damping set each vessel uses (see vessel_config.yaml) ---
+vessels:
+  pursuer_coeff_set: theta_anneal
+  evader_coeff_set:  theta_anneal
+
+# --- evader artificial-potential-field (APF) feedback law --------------------
+#  In the pursuer body frame the pursuer sits at the origin and the evader at
+#  (X, Y); the evader flees directly away from the pursuer at V_e_max.
+#     escape bearing (pursuer frame)   beta   = atan2(Y, X)
+#     heading error                    e_psi  = wrap(beta - psi_rel)
+#     surge command (force, N)         tau_u  = K_u * (V_e_max - u_e)       (>= 0)
+#     yaw command   (moment, N.m)      tau_r  = K_psi * e_psi - K_r * r_e
+#  tau is then allocated to the evader's two forward-only thrusters and clamped,
+#  exactly like the pursuer, so the evader respects the same 0-1.82 kgf band.
+evader_apf:
+  V_e_max_mps: 0.8             # commanded flee speed (keep < pursuer top speed for a non-empty tube)
+  K_u:   45.0                  # surge-force gain      [N per (m/s)]
+  K_psi: 6.0                   # yaw-moment gain       [N.m per rad]
+  K_r:   4.5                   # yaw-rate damping      [N.m per (rad/s)]

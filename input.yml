@@ -1,0 +1,22 @@
+density: 1000
+gravity: 9.80665
+
+name: sookshma
+length: 1
+breadth: 0.25
+speed: 0.8
+
+mass: 7.5 # Mass of the vessel in kg
+cog: [0.029,  0.0,  0.136] # Location of center of gravity in the vessel frame
+gyration: [0.1, 0.25, 0.25] # Diagonal elements of gyration tensor about CoG
+T_delta: 0.1 # Rudder time constant 
+
+initial_velocity: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0] # Initial velocity of the vessel
+initial_position: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # Initial position of the vessel
+
+sim_time: 200 # Simulation time in seconds
+time_step: 0.1 # Time step size
+
+control_type: fixed_rudder
+
+hydrodynamic_coefficients: /workspaces/mavlab/ros2_ws/src/student/tut_03/hyd.yml

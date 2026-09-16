@@ -1,0 +1,262 @@
+# ============================================================================
+#  Sookshma ASV — 3-DOF dynamics configuration  (the "dynamic input file")
+# ----------------------------------------------------------------------------
+#  This is the single source of truth for the simulator. Edit values here;
+#  no numbers are hard-coded in the Python. The model follows the standard
+#  Fossen 3-DOF manoeuvring model as written in the project's HJB paper
+#  ("HJB Reachability Formulation for a Twin-Thruster Surface Vessel"),
+#  equations (1)-(6):
+#
+#        M v_dot + C(v) v + D(v) v = tau
+#   =>   v_dot = M^{-1} [ tau - C(v) v - D(v) v ]
+#
+#  with body-frame velocity  v = (u, v, r)^T  (surge, sway, yaw-rate).
+#  The identified polynomial below supplies the damping vector D(v) v.
+# ============================================================================
+
+vessel_name: Sookshma
+
+# ---------------------------------------------------------------------------
+# 1. RIGID-BODY / MASS PROPERTIES
+# ---------------------------------------------------------------------------
+rigid_body:
+  mass_kg: 20.0            # m  — given
+  Izz_kg_m2: 1.5           # yaw moment of inertia about CoG.
+                           # *** PLACEHOLDER *** — not supplied. 1.5 kg.m^2 is a
+                           # documented estimate for a ~1 m, 20 kg hull
+                           # (radius of gyration ~0.27 m). Overwrite with your
+                           # measured / CAD value.
+  x_G_m: 0.0               # CoG offset from body origin (0 by port-stbd symmetry)
+  y_G_m: 0.0
+
+# Added mass (hydrodynamic).  Supplied values below.  Sign convention: added
+# mass enters as M11 = m - X_udot etc., so negative X_udot increases M.
+added_mass:
+  X_udot: -0.00344       # -> M11 = m  - X_udot   = 20.00344
+  Y_vdot: -0.018428      # -> M22 = m  - Y_vdot   = 20.018428
+  N_rdot: -0.0008464     # -> M33 = Izz - N_rdot  = Izz + 0.0008464
+
+# ---------------------------------------------------------------------------
+# 2. THRUSTER GEOMETRY & LIMITS
+# ---------------------------------------------------------------------------
+thrusters:
+  count: 2
+  arm_m: 0.20              # lateral distance of each thruster from the CoG (given)
+  # Allocation follows the paper's B = [[1, 1], [-d, d]]:
+  #     tau_u = F_port + F_stbd
+  #     tau_r = d * (F_stbd - F_port)      (d = arm_m)
+  # Body frame: x fwd, y starboard, z down; +r = bow to starboard.
+  force_min_kgf: 0.0       # operating range lower bound (given)
+  force_max_kgf: 1.82      # operating range upper bound (given)
+  gravity_m_s2: 9.80665    # kgf -> N conversion (1 kgf = 9.80665 N)
+  # Thruster performance curve used for PWM <-> force lookup:
+  curve_csv: thruster_T200_16V.csv   # Blue Robotics T200 @ 16 V
+  curve_voltage_V: 16
+  # Forward operating band on the T200 16 V curve (from the data):
+  #   0.00 kgf  -> PWM ~1500 us (RPM 0)
+  #   1.82 kgf  -> PWM ~1700 us (RPM ~2129)
+  pwm_neutral_us: 1500
+  pwm_at_max_force_us: 1700
+
+# ---------------------------------------------------------------------------
+# 3. MODEL SWITCHES
+# ---------------------------------------------------------------------------
+model:
+  active_coeff_set: theta_anneal   # theta_anneal | theta_boot
+  include_coriolis: true           # keep paper's C(v) v term.  Set false if the
+                                   # identified polynomial already absorbs the
+                                   # vr/ur/uv coupling (avoids double counting).
+  # Sign convention of the identified polynomial. The Fossen equation is
+  #   M v_dot = tau - C v - D v ,   so D(v) v is SUBTRACTED (a resistive force).
+  # If your fit produced the RHS force directly (already signed for +v_dot),
+  # set this to +1.0 to add instead of subtract.
+  damping_sign: -1.0
+
+# ---------------------------------------------------------------------------
+# 4. IDENTIFIED DAMPING POLYNOMIAL  D(v) v = [ X_D ; Y_D ; N_D ]
+# ---------------------------------------------------------------------------
+#  Basis (regressors) per component — DO NOT reorder; the code maps by name:
+#
+#  Surge X_D = Dx_u*u + Dx_u2*u^2 + Dx_v2*v^2 + Dx_r2*r^2 + Dx_vr*(v*r)
+#            + Dx_u3*u^3 + Dx_uv2*(u*v^2) + Dx_ur2*(u*r^2) + Dx_uvr*(u*v*r)
+#            + Dx_absu_u*(|u|*u)
+#
+#  Sway  Y_D = Dy_v*v + Dy_r*r + Dy_uv*(u*v) + Dy_ur*(u*r) + Dy_v3*v^3
+#            + Dy_r3*r^3 + Dy_u2v*(u^2*v) + Dy_u2r*(u^2*r) + Dy_v2r*(v^2*r)
+#            + Dy_vr2*(v*r^2) + Dy_absv_v*(|v|*v) + Dy_u_absv*(u*|v|)
+#
+#  Yaw   N_D = Dn_v*v + Dn_r*r + Dn_uv*(u*v) + Dn_ur*(u*r) + Dn_v3*v^3
+#            + Dn_r3*r^3 + Dn_u2v*(u^2*v) + Dn_u2r*(u^2*r) + Dn_v2r*(v^2*r)
+#            + Dn_vr2*(v*r^2) + Dn_absr_r*(|r|*r) + Dn_u_absr*(u*|r|)
+#
+coefficients:
+
+  theta_anneal:      # ||theta|| = 240.9  (default: converged / annealed set)
+    Dx_u:      28.5721
+    Dx_u2:    -15.982
+    Dx_v2:     73.3826
+    Dx_r2:     20.4587
+    Dx_vr:     16.4984
+    Dx_u3:     55.7021
+    Dx_uv2:   -36.2765
+    Dx_ur2:   -44.7408
+    Dx_uvr:   -82.1422
+    Dx_absu_u: -44.2545
+    Dy_v:      32.837
+    Dy_r:      -6.80627
+    Dy_uv:    -28.4202
+    Dy_ur:    -16.6802
+    Dy_v3:     66.2334
+    Dy_r3:      8.26366
+    Dy_u2v:     2.75094
+    Dy_u2r:    -1.0423
+    Dy_v2r:   148.983
+    Dy_vr2:    -4.43673
+    Dy_absv_v: -8.63508
+    Dy_u_absv:  5.81447
+    Dn_v:       6.74496
+    Dn_r:       0.974895
+    Dn_uv:    -11.1648
+    Dn_ur:     -9.47937
+    Dn_v3:     43.9947
+    Dn_r3:     16.8805
+    Dn_u2v:    13.2957
+    Dn_u2r:     9.21704
+    Dn_v2r:    62.4145
+    Dn_vr2:    -8.60609
+    Dn_absr_r: -6.27807
+    Dn_u_absr: -0.209728
+
+  theta_boot:        # ||theta|| = 43.37  (bootstrap / regularised set)
+    Dx_u:      11.5192
+    Dx_u2:     -3.83362
+    Dx_v2:      8.17809
+    Dx_r2:     19.4607
+    Dx_vr:     -3.19916
+    Dx_u3:     16.2078
+    Dx_uv2:     3.52425
+    Dx_ur2:    -2.11642
+    Dx_uvr:    -4.86907
+    Dx_absu_u: -3.83439
+    Dy_v:      18.027
+    Dy_r:      -5.34915
+    Dy_uv:     -1.05214
+    Dy_ur:    -13.133
+    Dy_v3:     -0.434985
+    Dy_r3:      2.37795
+    Dy_u2v:    -1.54682
+    Dy_u2r:    -4.97602
+    Dy_v2r:     0.780671
+    Dy_vr2:     0.035958
+    Dy_absv_v: -2.81088
+    Dy_u_absv:  6.02319
+    Dn_v:      -0.267026
+    Dn_r:       0.897836
+    Dn_uv:      4.87489
+    Dn_ur:     -6.90021
+    Dn_v3:      3.8117
+    Dn_r3:     12.0142
+    Dn_u2v:     7.10504
+    Dn_u2r:     6.98591
+    Dn_v2r:     2.10544
+    Dn_vr2:    -1.36558
+    Dn_absr_r: -4.28969
+    Dn_u_absr: -0.271698
+
+# ---------------------------------------------------------------------------
+# 5. DEFAULT SIMULATION SETTINGS (used by simulate.py)
+# ---------------------------------------------------------------------------
+simulation:
+  dt: 0.02                 # integrator step [s]
+  t_final: 30.0            # total sim time [s]
+  integrator: rk4          # rk4 | euler
+  initial_state:           # [x, y, psi, u, v, r]  (NED position + body velocity)
+    x: 0.0
+    y: 0.0
+    psi: 0.0
+    u: 0.0
+    v: 0.0
+    r: 0.0
+  # Demo command profile. Forces in kgf (auto-clamped to [force_min, force_max]).
+  # Each phase: [t_start_s, F_port_kgf, F_stbd_kgf]
+  command_schedule:
+    - [0.0, 1.82, 1.82]    # straight-line accel (max symmetric)
+    - [10.0, 1.82, 0.60]   # turn to starboard (port > stbd)
+    - [20.0, 1.20, 1.20]   # straight cruise
+
+# ---------------------------------------------------------------------------
+# 6. WAYPOINT-TRACKING MISSION (used by track_waypoints.py)
+# ---------------------------------------------------------------------------
+#  Closed-loop guidance + control:
+#    * Line-of-sight (LOS) guidance: steer toward the active waypoint; advance
+#      to the next when within acceptance_radius_m.
+#    * Heading control: PD on heading error -> desired yaw moment tau_r.
+#    * Speed control:   PI on surge-speed error -> desired surge force tau_u.
+#    * Allocation: (tau_u, tau_r) -> (F_port, F_stbd), each clamped to the
+#      0-1.82 kgf band (forward-only), so yaw authority saturates realistically.
+mission:
+  dt: 0.02
+  t_max: 220.0                 # safety cap on sim time [s]
+  cruise_speed_mps: 0.8        # desired surge speed on transit
+  slowdown_radius_m: 3.0       # start easing speed within this range of final wp
+  acceptance_radius_m: 1.5     # waypoint reached when closer than this
+  # Waypoints in NED: [x_North_m, y_East_m]
+  waypoints:
+    - [15.0, 0.0]
+    - [15.0, 15.0]
+    - [0.0, 15.0]
+    - [0.0, 0.0]
+  initial_state: {x: 0.0, y: 0.0, psi: 0.0, u: 0.0, v: 0.0, r: 0.0}
+  # Controller gains
+  gains:
+    speed_Kp: 45.0             # N per (m/s)
+    speed_Ki: 6.0              # N per (m/s * s)
+    speed_Imax: 20.0           # integrator clamp [N] (anti-windup)
+    heading_Kp: 6.0            # N.m per rad of heading error
+    heading_Kd: 4.5            # N.m per (rad/s) of yaw rate
+
+# ---------------------------------------------------------------------------
+# 7. HJB 9-STATE PURSUIT-EVASION SETUP  (relative state zeta in R^9)
+# ---------------------------------------------------------------------------
+#  zeta = (X, Y, psi_rel, u_e, v_e, u_i, v_i, r_e, r_i)
+#  Both vessels are IDENTICAL, so they reuse the rigid_body + added_mass block
+#  above and the diagonal damping below. "e" = evader, "i" = pursuer.
+hjb_9state:
+
+  # Diagonal (simple Fossen) damping used by the 9-state drift a_bar(zeta):
+  #   surge term = (d11 + d11_q*|u|)*u , sway = (d22 + d22_q*|v|)*v , etc.
+  # Linear terms supplied; quadratic terms default 0 (linear-only damping,
+  # which is smoother for the physics-informed neural network). Fill the *_q
+  # terms if you want quadratic drag.
+  damping_diagonal:
+    d11:   28.5721       # linear surge  (= Dx_u)
+    d22:   32.837        # linear sway   (= Dy_v)
+    d33:   0.974895      # linear yaw    (= Dn_r)
+    d11_q: 0.0           # quadratic surge |u|u  -- not supplied
+    d22_q: 0.0           # quadratic sway  |v|v  -- not supplied
+    d33_q: 0.0           # quadratic yaw   |r|r  -- not supplied
+
+  # Evader fixed repulsive artificial-potential-field (APF) policy:
+  #   pi_u = Ku*(V_max - u_e)
+  #   pi_r = Kpsi*wrap(psi_des - psi_e) - Kr*r_e
+  # (escape direction = (X,Y)/||(X,Y)||; repulsion gain eta cancels)
+  evader_apf:
+    V_max: null          # *** NEEDED *** evader max surge speed [m/s]
+    Ku:    null          # *** NEEDED *** surge proportional gain
+    Kpsi:  null          # *** NEEDED *** heading proportional gain
+    Kr:    null          # *** NEEDED *** yaw-rate derivative gain
+
+  # Pursuer actuator ellipsoid (derived from the thrusters block above):
+  #   tau_u_max = 2*F_max,  tau_r_max = arm*F_max
+  actuator:
+    F_max_N: 17.85       # 1.82 kgf * 9.80665
+    arm_m:   0.20
+    # -> tau_u_max ~ 35.70 N , tau_r_max ~ 3.57 N.m
+
+  # Game terminal cost + PINN solver constants:
+  game:
+    capture_radius_m: null   # *** NEEDED *** rho in l(zeta)=sqrt(X^2+Y^2)-rho
+    epsilon_reg:  1.0e-6     # removes singularity in optimal control (Eq. 18-19)
+    epsilon_visc: null       # *** NEEDED *** viscosity coefficient
+    horizon_T_s:  null       # *** NEEDED *** time horizon T
+    c_max:        null       # *** NEEDED *** terminal-rate bound (BC ansatz, Eq. 24)

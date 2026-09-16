@@ -1,0 +1,22 @@
+dim_flag: False
+
+# Surge hydrodynamic derivatives
+X_u: -0.01
+X_ud: -0.00344
+
+# Sway hydrodynamic derivatives
+Y_v: -0.010659050686665396
+Y_vd: -0.018428
+Y_r: 0.0017799664706713543
+Y_rd: -0.0015252
+
+# Yaw hydrodynamic derivatives
+N_v: -0.0006242757399292063
+N_vd: -0.0015228
+N_r: -0.001889456681929024
+N_rd: -0.0008464000000000001
+
+# Rudder hydrodynamic derivatives
+Y_delta: 0.02100751285923063
+N_delta: -0.006813248905845932
+
