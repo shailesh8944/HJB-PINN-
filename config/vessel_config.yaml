@@ -21,20 +21,26 @@ vessel_name: Sookshma
 # ---------------------------------------------------------------------------
 rigid_body:
   mass_kg: 20.0            # m  — given
-  Izz_kg_m2: 1.5           # yaw moment of inertia about CoG.
-                           # *** PLACEHOLDER *** — not supplied. 1.5 kg.m^2 is a
-                           # documented estimate for a ~1 m, 20 kg hull
-                           # (radius of gyration ~0.27 m). Overwrite with your
-                           # measured / CAD value.
+  Izz_kg_m2: 1.88          # yaw moment of inertia about CoG (user-provided).
+                           # -> M33 = Izz - N_rdot = 1.88 + 0.4232 = 2.3032 kg.m^2
   x_G_m: 0.0               # CoG offset from body origin (0 by port-stbd symmetry)
   y_G_m: 0.0
 
-# Added mass (hydrodynamic).  Supplied values below.  Sign convention: added
-# mass enters as M11 = m - X_udot etc., so negative X_udot increases M.
+# Added mass (hydrodynamic), DIAGONAL only. The sway-yaw cross terms (Y_rd, N_vd)
+# are intentionally omitted for now -- identical vessels, diagonal mass matrix.
+# Values are DIMENSIONAL, obtained from the reference vessel's NON-DIMENSIONAL
+# derivatives (hyd.yml) via the prime system with rho = 1000 kg/m^3, L = 1.0 m:
+#     X_udot = -0.00344   * 0.5*rho*L^3 = -1.7200 kg
+#     Y_vdot = -0.018428  * 0.5*rho*L^3 = -9.2140 kg
+#     N_rdot = -0.0008464 * 0.5*rho*L^5 = -0.4232 kg.m^2
+# NOTE: added mass is a pure inertia (kg, kg.m^2) and does NOT depend on speed U
+# -- no velocity enters its scaling. Speed/turn-rate effects live in C(v) and D(v),
+# not in M. Effective (constant) mass matrix:
+#   M = diag(m - X_udot, m - Y_vdot, Izz - N_rdot) = diag(21.720, 29.214, 2.3032)
 added_mass:
-  X_udot: -0.00344       # -> M11 = m  - X_udot   = 20.00344
-  Y_vdot: -0.018428      # -> M22 = m  - Y_vdot   = 20.018428
-  N_rdot: -0.0008464     # -> M33 = Izz - N_rdot  = Izz + 0.0008464
+  X_udot: -1.7200        # dimensional
+  Y_vdot: -9.2140        # dimensional
+  N_rdot: -0.4232        # dimensional
 
 # ---------------------------------------------------------------------------
 # 2. THRUSTER GEOMETRY & LIMITS

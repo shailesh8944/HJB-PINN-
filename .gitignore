@@ -4,3 +4,9 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+
+# training outputs and trained models (regenerable / large)
+outputs/
+out_hji/
+*.pt
+train.log
