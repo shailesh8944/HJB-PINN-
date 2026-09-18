@@ -40,6 +40,9 @@ class HJBTorch:
         self.M11 = m - float(am["X_udot"])
         self.M22 = m - float(am["Y_vdot"])
         self.M33 = Izz - float(am["N_rdot"])
+        self.MC  = -float(am.get("Y_rdot", 0.0))    # M[sway,yaw] coupling
+        self.MC2 = -float(am.get("N_vdot", 0.0))    # M[yaw,sway] coupling
+        self.DELTA = self.M22 * self.M33 - self.MC * self.MC2
 
         mdl = vessel_cfg["model"]
         self.include_coriolis = bool(mdl["include_coriolis"])
@@ -91,14 +94,18 @@ class HJBTorch:
     def _nu_dot(self, u, v, r, tau_u, tau_r, c):
         """Body-frame acceleration (du,dv,dr) for one vessel, tau=(tau_u,0,tau_r)."""
         X_D, Y_D, N_D = self._damping(u, v, r, c)
-        rhs_u = tau_u + self.damping_sign * X_D
-        rhs_v = 0.0 + self.damping_sign * Y_D
-        rhs_r = tau_r + self.damping_sign * N_D
+        Cc = self.M22 * v + self.MC * r
+        b_u = tau_u + self.damping_sign * X_D
+        b_v = self.damping_sign * Y_D
+        b_r = tau_r + self.damping_sign * N_D
         if self.include_coriolis:
-            rhs_u = rhs_u - (-self.M22 * v * r)
-            rhs_v = rhs_v - (self.M11 * u * r)
-            rhs_r = rhs_r - ((self.M22 - self.M11) * u * v)
-        return rhs_u / self.M11, rhs_v / self.M22, rhs_r / self.M33
+            b_u = b_u + Cc * r
+            b_v = b_v - self.M11 * u * r
+            b_r = b_r - Cc * u + self.M11 * u * v
+        du = b_u / self.M11
+        dv = (self.M33 * b_v - self.MC * b_r) / self.DELTA
+        dr = (-self.MC2 * b_v + self.M22 * b_r) / self.DELTA
+        return du, dv, dr
 
     # -----------------------------------------------------------------------
     def _apf_tau(self, zeta):
@@ -147,7 +154,7 @@ class HJBTorch:
         a = self.drift(zeta).detach()             # drift does not depend on network params
         drift_term = (p * a).sum(dim=1)
         c0 = p[:, IUI] / self.M11
-        c1 = p[:, IRI] / self.M33
+        c1 = (self.M22 * p[:, IRI] - self.MC * p[:, IVI]) / self.DELTA
         bias = self.Fmax * c0
         R = torch.sqrt(self.Sig0 * c0 ** 2 + self.Sig1 * c1 ** 2 + self.eps_H)
         return drift_term + bias - R

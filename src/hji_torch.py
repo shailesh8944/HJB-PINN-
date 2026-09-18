@@ -62,8 +62,10 @@ class GameHJITorch(HJBTorch):
         """Isaacs Hamiltonian H = <p,a0> + (b_i - R_i) + (b_e + R_e)."""
         a = self.drift0(zeta).detach()
         drift_term = (p * a).sum(dim=1)
-        ci0 = p[:, IUI] / self.M11; ci1 = p[:, IRI] / self.M33      # pursuer costate dir
-        ce0 = p[:, IUE] / self.M11; ce1 = p[:, IRE] / self.M33      # evader  costate dir
+        ci0 = p[:, IUI] / self.M11
+        ci1 = (self.M22 * p[:, IRI] - self.MC * p[:, IVI]) / self.DELTA   # pursuer (coupled)
+        ce0 = p[:, IUE] / self.M11
+        ce1 = (self.M22 * p[:, IRE] - self.MC * p[:, IVE]) / self.DELTA   # evader (coupled)
         Ri = self._R(ci0, ci1)
         Re = self._R(ce0, ce1)
         bias_i = self.Fmax * ci0
@@ -80,8 +82,10 @@ class GameHJITorch(HJBTorch):
         """Saddle-point controls: pursuer tau_i* = u0 - Sig c_i / R_i (min),
         evader tau_e* = u0 + Sig c_e / R_e (max). Returns (tau_i, tau_e), each
         (tau_u, tau_r)."""
-        ci0 = p[:, IUI] / self.M11; ci1 = p[:, IRI] / self.M33
-        ce0 = p[:, IUE] / self.M11; ce1 = p[:, IRE] / self.M33
+        ci0 = p[:, IUI] / self.M11
+        ci1 = (self.M22 * p[:, IRI] - self.MC * p[:, IVI]) / self.DELTA
+        ce0 = p[:, IUE] / self.M11
+        ce1 = (self.M22 * p[:, IRE] - self.MC * p[:, IVE]) / self.DELTA
         Ri = self._R(ci0, ci1); Re = self._R(ce0, ce1)
         tau_i = torch.stack([self.Fmax - self.Sig0 * ci0 / Ri, -self.Sig1 * ci1 / Ri], dim=1)
         tau_e = torch.stack([self.Fmax + self.Sig0 * ce0 / Re,  self.Sig1 * ce1 / Re], dim=1)
@@ -93,7 +97,9 @@ class GameHJITorch(HJBTorch):
         closed-loop rollout of the saddle-point controls (used by the verifier)."""
         a = self.drift0(zeta).clone()
         a[:, IUI] = a[:, IUI] + tau_i[:, 0] / self.M11
-        a[:, IRI] = a[:, IRI] + tau_i[:, 1] / self.M33
+        a[:, IVI] = a[:, IVI] - self.MC * tau_i[:, 1] / self.DELTA
+        a[:, IRI] = a[:, IRI] + self.M22 * tau_i[:, 1] / self.DELTA
         a[:, IUE] = a[:, IUE] + tau_e[:, 0] / self.M11
-        a[:, IRE] = a[:, IRE] + tau_e[:, 1] / self.M33
+        a[:, IVE] = a[:, IVE] - self.MC * tau_e[:, 1] / self.DELTA
+        a[:, IRE] = a[:, IRE] + self.M22 * tau_e[:, 1] / self.DELTA
         return a

@@ -23,7 +23,7 @@ import os, sys, time, argparse, numpy as np, torch, yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hji_torch import GameHJITorch
-from hjb_torch import IUE, IUI, IRE, IRI
+from hjb_torch import IUE, IVE, IUI, IVI, IRE, IRI
 from pinn import SIREN, ExactBCValue, value_and_grads
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
@@ -34,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 # ---------------------------------------------------------------------------
 def isaacs_checks(phys, n=200, seed=0):
     M11, M33, Fmax = phys.M11, phys.M33, phys.Fmax
+    M22, MC, DELTA = phys.M22, phys.MC, phys.DELTA
     au, ar = phys.alpha_u, phys.alpha_r
     rng = np.random.default_rng(seed)
     Z = rng.uniform([-14, -14, -np.pi, -0.2, -0.6, -0.2, -0.6, -1.5, -1.5],
@@ -49,8 +50,8 @@ def isaacs_checks(phys, n=200, seed=0):
     e_ham = e_isaacs = 0.0
     for k in range(n):
         base = float(P[k] @ a0[k])
-        ci0, ci1 = P[k, IUI] / M11, P[k, IRI] / M33
-        ce0, ce1 = P[k, IUE] / M11, P[k, IRE] / M33
+        ci0 = P[k, IUI] / M11; ci1 = (M22 * P[k, IRI] - MC * P[k, IVI]) / DELTA
+        ce0 = P[k, IUE] / M11; ce1 = (M22 * P[k, IRE] - MC * P[k, IVE]) / DELTA
         inner_i = ci0 * cu + ci1 * cr
         inner_e = ce0 * cu + ce1 * cr
         minmax = base + inner_i.min() + inner_e.max()

@@ -13,7 +13,7 @@ Checks:
 import os, sys, numpy as np, torch, yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hji_torch import GameHJITorch
-from hjb_torch import IUE, IUI, IRE, IRI
+from hjb_torch import IUE, IVE, IUI, IVI, IRE, IRI
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 
@@ -23,6 +23,7 @@ def main():
     with open(os.path.join(ROOT, "config", "game_config.yaml")) as f: gcfg = yaml.safe_load(f)
     phys = GameHJITorch(vcfg, gcfg, dtype=torch.float64)
     M11, M33 = phys.M11, phys.M33
+    M22, MC, DELTA = phys.M22, phys.MC, phys.DELTA
     au, ar, Fmax = phys.alpha_u, phys.alpha_r, phys.Fmax
 
     rng = np.random.default_rng(0)
@@ -43,8 +44,8 @@ def main():
     e_ham, e_isaacs = 0.0, 0.0
     for k in range(n):
         base = float(P[k] @ a0[k])
-        ci0, ci1 = P[k, IUI] / M11, P[k, IRI] / M33
-        ce0, ce1 = P[k, IUE] / M11, P[k, IRE] / M33
+        ci0 = P[k, IUI] / M11; ci1 = (M22 * P[k, IRI] - MC * P[k, IVI]) / DELTA
+        ce0 = P[k, IUE] / M11; ce1 = (M22 * P[k, IRE] - MC * P[k, IVE]) / DELTA
         inner_i = ci0 * ci_u + ci1 * ci_r        # <G_i^T p, u_i> over the ellipse
         inner_e = ce0 * ce_u + ce1 * ce_r        # <G_e^T p, u_e> over the ellipse
         min_i, max_e = float(np.min(inner_i)), float(np.max(inner_e))
@@ -64,9 +65,9 @@ def main():
     worst = max(outside(ti), outside(te))
 
     # (4) reduction: zero the evader costate -> pursuer-only Hamiltonian
-    Pz = Pt.clone(); Pz[:, IUE] = 0; Pz[:, IRE] = 0
+    Pz = Pt.clone(); Pz[:, IUE] = 0; Pz[:, IVE] = 0; Pz[:, IRE] = 0  # zero all evader costates
     Hgame_z = phys.game_hamiltonian(Zt, Pz).numpy()
-    ci0 = (Pz[:, IUI] / M11).numpy(); ci1 = (Pz[:, IRI] / M33).numpy()
+    ci0 = (Pz[:, IUI] / M11).numpy(); ci1 = ((M22 * Pz[:, IRI] - MC * Pz[:, IVI]) / DELTA).numpy()
     Ri = np.sqrt(phys.Sig0 * ci0 ** 2 + phys.Sig1 * ci1 ** 2 + phys.eps_H)
     Hpursuer_only = (Pz.numpy() * a0).sum(1) + Fmax * ci0 - Ri + np.sqrt(phys.eps_H)
     e_reduce = float(np.max(np.abs(Hgame_z - Hpursuer_only)))

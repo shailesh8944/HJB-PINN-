@@ -21,33 +21,40 @@ vessel_name: Sookshma
 # ---------------------------------------------------------------------------
 rigid_body:
   mass_kg: 20.0            # m  — given
-  Izz_kg_m2: 1.88          # yaw moment of inertia about CoG (user-provided).
-                           # -> M33 = Izz - N_rdot = 1.88 + 0.4232 = 2.3032 kg.m^2
+  Izz_kg_m2: 2.44          # yaw moment of inertia about CoG (SolidWorks CAD, at CoG).
+                           # -> M33 = Izz - N_rdot = 2.44 + 0.4232 = 2.8632 kg.m^2
   x_G_m: 0.0               # CoG offset from body origin (0 by port-stbd symmetry)
   y_G_m: 0.0
 
-# Added mass (hydrodynamic), DIAGONAL only. The sway-yaw cross terms (Y_rd, N_vd)
-# are intentionally omitted for now -- identical vessels, diagonal mass matrix.
-# Values are DIMENSIONAL, obtained from the reference vessel's NON-DIMENSIONAL
-# derivatives (hyd.yml) via the prime system with rho = 1000 kg/m^3, L = 1.0 m:
+# Added mass (hydrodynamic), COUPLED (sway-yaw cross terms kept). Body origin at
+# the centre of mass, so there is no rigid-body m*x_G coupling; the only coupling
+# is the added-mass one below. Values are DIMENSIONAL, from the reference vessel's
+# NON-DIMENSIONAL derivatives (hyd.yml) via the prime system, rho=1000, L=1.0 (LBP):
 #     X_udot = -0.00344   * 0.5*rho*L^3 = -1.7200 kg
 #     Y_vdot = -0.018428  * 0.5*rho*L^3 = -9.2140 kg
+#     Y_rdot = -0.0015252 * 0.5*rho*L^4 = -0.7626 kg.m   (sway-yaw)
+#     N_vdot = -0.0015228 * 0.5*rho*L^4 = -0.7614 kg.m   (yaw-sway)
 #     N_rdot = -0.0008464 * 0.5*rho*L^5 = -0.4232 kg.m^2
-# NOTE: added mass is a pure inertia (kg, kg.m^2) and does NOT depend on speed U
-# -- no velocity enters its scaling. Speed/turn-rate effects live in C(v) and D(v),
-# not in M. Effective (constant) mass matrix:
-#   M = diag(m - X_udot, m - Y_vdot, Izz - N_rdot) = diag(21.720, 29.214, 2.3032)
+# NOTE: added mass is a pure inertia and does NOT depend on speed U. Effective
+# (constant) mass matrix:
+#   M = [[m-X_udot,      0,            0        ],
+#        [    0,     m-Y_vdot,     -Y_rdot      ],
+#        [    0,     -N_vdot,    Izz-N_rdot     ]]
+#     = [[21.720, 0, 0], [0, 29.214, 0.7626], [0, 0.7614, 2.8632]]
 added_mass:
+  # COUPLED: sway-yaw cross terms kept (body origin at centre of mass).
   X_udot: -1.7200        # dimensional
   Y_vdot: -9.2140        # dimensional
   N_rdot: -0.4232        # dimensional
+  Y_rdot: -0.7626        # dimensional sway-yaw cross term  -> M[sway,yaw] = -Y_rdot = 0.7626
+  N_vdot: -0.7614        # dimensional yaw-sway cross term  -> M[yaw,sway] = -N_vdot = 0.7614
 
 # ---------------------------------------------------------------------------
 # 2. THRUSTER GEOMETRY & LIMITS
 # ---------------------------------------------------------------------------
 thrusters:
   count: 2
-  arm_m: 0.20              # lateral distance of each thruster from the CoG (given)
+  arm_m: 0.21              # lateral distance of each thruster from CoG (CAD: y=+/-0.21)
   # Allocation follows the paper's B = [[1, 1], [-d, d]]:
   #     tau_u = F_port + F_stbd
   #     tau_r = d * (F_stbd - F_port)      (d = arm_m)
@@ -69,9 +76,11 @@ thrusters:
 # ---------------------------------------------------------------------------
 model:
   active_coeff_set: theta_anneal   # theta_anneal | theta_boot
-  include_coriolis: true           # keep paper's C(v) v term.  Set false if the
-                                   # identified polynomial already absorbs the
-                                   # vr/ur/uv coupling (avoids double counting).
+  include_coriolis: false          # OFF: theta_anneal was identified at the CoG as the
+                                   # TOTAL velocity-dependent reaction, so it already
+                                   # contains the vr/ur/uv coupling. Adding C(v)v again
+                                   # double-counts it (caused surge collapse + spiral
+                                   # hysteresis). Model is now  M v_dot = tau - D(v).
   # Sign convention of the identified polynomial. The Fossen equation is
   #   M v_dot = tau - C v - D v ,   so D(v) v is SUBTRACTED (a resistive force).
   # If your fit produced the RHS force directly (already signed for +v_dot),
@@ -256,7 +265,7 @@ hjb_9state:
   #   tau_u_max = 2*F_max,  tau_r_max = arm*F_max
   actuator:
     F_max_N: 17.85       # 1.82 kgf * 9.80665
-    arm_m:   0.20
+    arm_m:   0.21
     # -> tau_u_max ~ 35.70 N , tau_r_max ~ 3.57 N.m
 
   # Game terminal cost + PINN solver constants:

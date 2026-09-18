@@ -26,9 +26,17 @@ import os, time, math, argparse, numpy as np, torch, torch.nn as nn
 # ============================================================================
 G          = 9.80665
 MASS       = 20.0
-# diagonal effective mass matrix M = diag(m - X_ud, m - Y_vd, Izz - N_rd)
-M11, M22, M33 = 21.7200, 29.2140, 2.3032        # Izz=1.88, dimensional diagonal added mass
-ARM        = 0.20                                # thruster arm [m]
+# COUPLED effective mass matrix (body origin at centre of mass):
+#   M = [[M11, 0,   0  ],
+#        [ 0,  M22, MC ],
+#        [ 0,  MC,  M33]]
+# M11 = m - X_ud = 21.72 ; M22 = m - Y_vd = 29.214 ;
+# M33 = Izz - N_rd = 2.44(CAD) + 0.4232 = 2.8632 ;
+# MC  = -Y_rd = -N_vd ~= 0.76  (sway-yaw added-mass coupling)
+M11, M22, M33 = 21.7200, 29.2140, 2.8632
+MC         = 0.76
+DELTA      = M22 * M33 - MC * MC                 # determinant of the sway-yaw 2x2 block
+ARM        = 0.21                                # thruster lateral arm [m] (CAD: y = +/-0.21)
 FMAX       = 1.82 * G                            # 17.848 N per thruster (static)
 ALPHA_U    = FMAX / math.sqrt(2.0)              # inscribed-ellipse semi-axes
 ALPHA_R    = ARM * FMAX / math.sqrt(2.0)
@@ -37,7 +45,6 @@ EPS_H      = 1.0e-6                              # rounds the Hamiltonian norm c
 R_COLLIDE  = 1.0                                 # collision radius [m]
 T_HORIZON  = 20.0                                # reachability horizon [s]
 DAMP_SIGN  = -1.0                                # D(v)v subtracted
-INCLUDE_CORIOLIS = True
 
 # theta_anneal damping (dimensional), identical for both vessels
 TA = dict(
@@ -73,16 +80,18 @@ def damping(u, v, r, c):
 
 
 def nu_dot0(u, v, r):
-    """Control-independent body acceleration (tau=0) for one vessel."""
+    """Control-independent body acceleration (tau=0), coupled sway-yaw.
+    Solves M v_dot = -D(v)v (no separate Coriolis) with the coupled M."""
     X, Y, N = damping(u, v, r, TA)
-    rhs_u = DAMP_SIGN * X
-    rhs_v = DAMP_SIGN * Y
-    rhs_r = DAMP_SIGN * N
-    if INCLUDE_CORIOLIS:
-        rhs_u = rhs_u - (-M22 * v * r)
-        rhs_v = rhs_v - (M11 * u * r)
-        rhs_r = rhs_r - ((M22 - M11) * u * v)
-    return rhs_u / M11, rhs_v / M22, rhs_r / M33
+    # NO separate Coriolis: theta_anneal (CoG frame) is the total velocity-dependent
+    # reaction and already contains the vr/ur/uv coupling.  M v_dot = tau - D(v).
+    b_u = DAMP_SIGN * X
+    b_v = DAMP_SIGN * Y
+    b_r = DAMP_SIGN * N
+    du = b_u / M11
+    dv = (M33 * b_v - MC * b_r) / DELTA           # M^{-1} b  (sway-yaw block)
+    dr = (-MC * b_v + M22 * b_r) / DELTA
+    return du, dv, dr
 
 
 def drift0(z):
@@ -112,12 +121,21 @@ def _R(c0, c1):
     return torch.sqrt(SIG0 * c0**2 + SIG1 * c1**2 + EPS_H)
 
 
+def _cdirs(p):
+    """Control costate directions with the COUPLED input matrix G:
+    tau_u acts on surge (1/M11); tau_r acts on yaw (M22/DELTA) AND sway (-MC/DELTA)."""
+    ci0 = p[:, IUI] / M11
+    ci1 = (M22 * p[:, IRI] - MC * p[:, IVI]) / DELTA
+    ce0 = p[:, IUE] / M11
+    ce1 = (M22 * p[:, IRE] - MC * p[:, IVE]) / DELTA
+    return ci0, ci1, ce0, ce1
+
+
 def game_hamiltonian(z, p):
     """Isaacs H = <p,a0> + (Fmax*ci0 - Ri) + (Fmax*ce0 + Re)."""
     a = drift0(z).detach()
     drift_term = (p * a).sum(dim=1)
-    ci0, ci1 = p[:, IUI] / M11, p[:, IRI] / M33
-    ce0, ce1 = p[:, IUE] / M11, p[:, IRE] / M33
+    ci0, ci1, ce0, ce1 = _cdirs(p)
     return drift_term + (FMAX*ci0 - _R(ci0, ci1)) + (FMAX*ce0 + _R(ce0, ce1))
 
 
@@ -126,8 +144,7 @@ def game_vi_residual(z, V, dVdt, gradV):
 
 
 def optimal_controls(p):
-    ci0, ci1 = p[:, IUI]/M11, p[:, IRI]/M33
-    ce0, ce1 = p[:, IUE]/M11, p[:, IRE]/M33
+    ci0, ci1, ce0, ce1 = _cdirs(p)
     Ri, Re = _R(ci0, ci1), _R(ce0, ce1)
     ti = torch.stack([FMAX - SIG0*ci0/Ri, -SIG1*ci1/Ri], 1)
     te = torch.stack([FMAX + SIG0*ce0/Re,  SIG1*ce1/Re], 1)
@@ -209,8 +226,8 @@ def isaacs_checks(device, n=200, seed=0):
     e_ham = e_is = 0.0
     for k in range(n):
         base = float(P[k] @ a0[k])
-        ci0, ci1 = P[k,IUI]/M11, P[k,IRI]/M33
-        ce0, ce1 = P[k,IUE]/M11, P[k,IRE]/M33
+        ci0 = P[k,IUI]/M11; ci1 = (M22*P[k,IRI] - MC*P[k,IVI])/DELTA
+        ce0 = P[k,IUE]/M11; ce1 = (M22*P[k,IRE] - MC*P[k,IVE])/DELTA
         mn = (ci0*cu + ci1*cr).min(); mx = (ce0*cu + ce1*cr).max()
         e_ham = max(e_ham, abs(Hcf[k] - (base+mn+mx)))
         e_is = max(e_is, abs((base+mn+mx) - (base+mx+mn)))
@@ -284,7 +301,8 @@ def main():
     torch.manual_seed(args.seed)
 
     print("="*70)
-    print(f" device={device}  M=diag({M11},{M22},{M33})  Fmax={FMAX:.3f}N  R={R_COLLIDE}  T={T_HORIZON}")
+    print(f" device={device}  M=[[{M11},0,0],[0,{M22},{MC}],[0,{MC},{M33}]]  "
+          f"arm={ARM}  Fmax={FMAX:.3f}N  R={R_COLLIDE}  T={T_HORIZON}")
     eh, ei, w = isaacs_checks(device)
     print(f" Isaacs: |H-minmax|={eh:.2e}[{'PASS' if eh<1e-3 else 'FAIL'}]  "
           f"gap={ei:.2e}[{'PASS' if ei<1e-9 else 'FAIL'}]  "
