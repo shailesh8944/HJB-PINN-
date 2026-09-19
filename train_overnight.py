@@ -19,7 +19,7 @@ Resume after an interruption: add --resume (loads out_hji/ckpt.pt).
 If you hit a GPU out-of-memory error, drop --batch to 32768 or 16384.
 """
 
-import os, time, math, argparse, numpy as np, torch, torch.nn as nn
+import os, glob, shutil, time, math, argparse, numpy as np, torch, torch.nn as nn
 
 # ============================================================================
 #  BAKED-IN PHYSICS CONSTANTS  (final agreed values)
@@ -287,6 +287,7 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-5)
     ap.add_argument("--curric-frac", type=float, default=0.5)
     ap.add_argument("--save-every", type=int, default=5000)
+    ap.add_argument("--log-every", type=int, default=50)
     ap.add_argument("--out", default="out_hji")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
@@ -296,7 +297,6 @@ def main():
     if device.startswith("cuda") and not torch.cuda.is_available():
         print("cuda not available -> cpu"); device = "cpu"
     os.makedirs(args.out, exist_ok=True)
-    ckpt = os.path.join(args.out, "ckpt.pt")
     dtype = torch.float32
     torch.manual_seed(args.seed)
 
@@ -318,13 +318,18 @@ def main():
     hi9 = torch.tensor(hi[:9], dtype=dtype, device=device)
 
     start, hist = 0, []
-    if args.resume and os.path.exists(ckpt):
-        ck = torch.load(ckpt, map_location=device)
-        net.load_state_dict(ck["net"]); opt.load_state_dict(ck["opt"])
-        start = int(ck["iter"]) + 1; hist = ck.get("hist", [])
-        print(f" resumed at iter {start}", flush=True)
+    if args.resume:
+        prior = sorted(glob.glob(os.path.join(args.out, "ckpt_*.pt")))
+        if prior:
+            latest = prior[-1]
+            ck = torch.load(latest, map_location=device)
+            net.load_state_dict(ck["net"]); opt.load_state_dict(ck["opt"])
+            start = int(ck["iter"]) + 1; hist = ck.get("hist", [])
+            print(f" resumed from {latest} at iter {start}", flush=True)
 
+    print(f" {'iter':>7} {'loss':>12} {'horizon':>8} {'it/s':>7} {'elapsed':>9} {'ETA':>9}", flush=True)
     t0 = time.time()
+    t_last, it_last = t0, start
     for it in range(start, args.iters):
         opt.zero_grad()
         frac = min(1.0, max(0.0, it - args.warmup) / max(1.0, args.curric_frac*args.iters))
@@ -338,17 +343,25 @@ def main():
         opt.step()
         if it % 100 == 0 or it == args.iters - 1:
             hist.append((it, float(loss.detach())))
+        if args.log_every and (it % args.log_every == 0 or it == args.iters - 1):
+            now = time.time()
+            rate = (it - it_last) / max(1e-9, now - t_last)
+            t_last, it_last = now, it
+            remaining = args.iters - 1 - it
+            eta_s = remaining / rate if rate > 0 else float("inf")
+            print(f" {it:>7} {float(loss.detach()):>12.4e} {t_cur:>7.1f}s "
+                  f"{rate:>6.1f}/s {(now-t0)/60:>8.1f}m {eta_s/60:>8.1f}m", flush=True)
         if args.save_every and (it % args.save_every == 0 or it == args.iters - 1) and it > start:
+            ckpt_path = os.path.join(args.out, f"ckpt_{it:07d}.pt")
+            map_path = os.path.join(args.out, f"danger_safe_{it:07d}.png")
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
-                        "iter": it, "hist": hist}, ckpt)
-            save_map(net, os.path.join(args.out, "danger_safe.png"), device, hist=hist)
-            print(f" [ckpt] iter {it:>7}  loss {float(loss.detach()):.4e}  "
-                  f"horizon {t_cur:5.1f}s  elapsed {(time.time()-t0)/60:.1f} min", flush=True)
+                        "iter": it, "hist": hist}, ckpt_path)
+            save_map(net, map_path, device, hist=hist)
+            shutil.copyfile(map_path, os.path.join(args.out, "danger_safe.png"))  # convenience "latest" alias
+            print(f" [ckpt saved] iter {it:>7}  -> {ckpt_path}, {map_path}", flush=True)
 
-    torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
-                "iter": args.iters-1, "hist": hist}, ckpt)
-    save_map(net, os.path.join(args.out, "danger_safe.png"), device, hist=hist)
-    print(f" DONE in {(time.time()-t0)/60:.1f} min. Results in {args.out}/", flush=True)
+    print(f" DONE in {(time.time()-t0)/60:.1f} min. Results in {args.out}/  "
+          f"({len(glob.glob(os.path.join(args.out, 'ckpt_*.pt')))} snapshots kept)", flush=True)
 
 
 if __name__ == "__main__":
