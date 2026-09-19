@@ -8,5 +8,6 @@ venv/
 # training outputs and trained models (regenerable / large)
 outputs/
 out_hji/
+Deep reachability/output/
 *.pt
 train.log

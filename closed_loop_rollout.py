@@ -10,7 +10,7 @@ import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from train_overnight import (SIREN, ExactBCValue, drift0, optimal_controls,
                               IX, IY, IPSI, IUE, IVE, IUI, IVI, IRE, IRI,
-                              M11, M22, M33, R_COLLIDE, T_HORIZON)
+                              M11, M22, M23, DELTA, R_COLLIDE, T_HORIZON)
 
 # usage: python3 closed_loop_rollout.py [ckpt_path]   (defaults to the latest snapshot in out_hji/)
 if len(sys.argv) > 1:
@@ -65,9 +65,11 @@ for step in range(steps):
         ti, te = optimal_controls(gradV)
         adot = a0.clone()
         adot[:, IUE] += te[:, 0] / M11
-        adot[:, IRE] += te[:, 1] / M33
+        adot[:, IVE] -= M23 * te[:, 1] / DELTA
+        adot[:, IRE] += M22 * te[:, 1] / DELTA
         adot[:, IUI] += ti[:, 0] / M11
-        adot[:, IRI] += ti[:, 1] / M33
+        adot[:, IVI] -= M23 * ti[:, 1] / DELTA
+        adot[:, IRI] += M22 * ti[:, 1] / DELTA
         z = z + dt * adot
         t_elapsed = t_elapsed + dt
         sep = torch.sqrt(z[:, IX]**2 + z[:, IY]**2 + 1e-12)

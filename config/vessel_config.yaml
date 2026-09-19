@@ -76,11 +76,8 @@ thrusters:
 # ---------------------------------------------------------------------------
 model:
   active_coeff_set: theta_anneal   # theta_anneal | theta_boot
-  include_coriolis: false          # OFF: theta_anneal was identified at the CoG as the
-                                   # TOTAL velocity-dependent reaction, so it already
-                                   # contains the vr/ur/uv coupling. Adding C(v)v again
-                                   # double-counts it (caused surge collapse + spiral
-                                   # hysteresis). Model is now  M v_dot = tau - D(v).
+  include_coriolis: true           # ON: the identified polynomial is D(v)v only.
+                                   # The plant is M v_dot = tau - C(v)v - D(v)v.
   # Sign convention of the identified polynomial. The Fossen equation is
   #   M v_dot = tau - C v - D v ,   so D(v) v is SUBTRACTED (a resistive force).
   # If your fit produced the RHS force directly (already signed for +v_dot),

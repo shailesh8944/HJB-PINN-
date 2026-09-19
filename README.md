@@ -25,14 +25,16 @@ Kinematics (body → NED):
 ψ̇  =  r
 ```
 
-**Mass matrix** `M = diag(M11, M22, M33)`, with
-`M11 = m − X_u̇`, `M22 = m − Y_v̇`, `M33 = Izz − N_ṙ`.
-Here `m = 20 kg`. Added mass defaults to 0 (not supplied), so `M = diag(20, 20, Izz)`.
+**Mass matrix** is coupled in sway-yaw:
+`M = [[M11,0,0],[0,M22,M23],[0,M32,M33]]`, with current values
+`[[21.72,0,0],[0,29.214,0.7626],[0,0.7614,2.8632]]`.
 
 **Coriolis** (rigid-body + added mass form from the paper):
 
 ```
-C(ν)ν = [ −M22·v·r ,  M11·u·r ,  (M22−M11)·u·v ]
+C(ν)ν = [ −(M22·v+M23·r)r,
+           M11·u·r,
+           (M22·v+M23·r)u−M11·u·v ]
 ```
 
 **Damping** `D(ν)ν = [X_D, Y_D, N_D]` is the identified polynomial, replacing the
@@ -41,7 +43,7 @@ coefficient sets (`θ_anneal`, `θ_boot`) live in `config/vessel_config.yaml`.
 
 ### Thrusters
 
-Two symmetric thrusters, arm `d = 0.20 m` from the CoG. Allocation follows the
+Two symmetric thrusters, arm `d = 0.21 m` from the CoG. Allocation follows the
 paper's `B = [[1, 1], [−d, d]]`:
 
 ```
@@ -163,15 +165,11 @@ trajectories that were NOT used to fit the coefficients:
 
 ## Assumptions & things to set (flagged)
 
-1. **`Izz = 1.5 kg·m²` is a PLACEHOLDER** — you did not supply yaw inertia.
-   1.5 is a documented estimate for a ~1 m, 20 kg hull. Overwrite with your
-   measured / CAD value in `config/vessel_config.yaml → rigid_body.Izz_kg_m2`.
-2. **Added mass = 0** (per your instruction). With it zero, `C(ν)` is pure
-   rigid-body Coriolis. Fill `added_mass` in the config if you identify them.
-3. **Coriolis overlap.** Your polynomial already contains cross-terms
-   (`uv`, `ur`, `vr`), and `C(ν)ν` also produces `vr`/`ur` terms. The paper keeps
-   both; if your fit already absorbed that coupling, run with `--no-coriolis`
-   (or set `model.include_coriolis: false`) to avoid double counting.
+1. `Izz = 2.44 kg·m²` is the current SolidWorks CAD value at the CoG.
+2. Added mass is dimensionalized from the reference derivatives and includes the
+   sway-yaw cross terms shown above.
+3. The identified polynomial represents `D(ν)ν` only, so the separate
+   skew-symmetric Coriolis term `C(ν)ν` is enabled.
 4. **Damping sign** is `−1` (`D(ν)ν` subtracted, per Fossen). If your fit
    produced the signed RHS force directly, set `model.damping_sign: +1`.
 5. The T200 curve is the **16 V** branch, as requested. Forces above 1.82 kgf

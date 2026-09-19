@@ -27,15 +27,14 @@ import os, glob, shutil, time, math, argparse, numpy as np, torch, torch.nn as n
 G          = 9.80665
 MASS       = 20.0
 # COUPLED effective mass matrix (body origin at centre of mass):
-#   M = [[M11, 0,   0  ],
-#        [ 0,  M22, MC ],
-#        [ 0,  MC,  M33]]
+#   M = [[M11, 0,   0   ],
+#        [ 0,  M22, M23 ],
+#        [ 0,  M32, M33 ]]
 # M11 = m - X_ud = 21.72 ; M22 = m - Y_vd = 29.214 ;
 # M33 = Izz - N_rd = 2.44(CAD) + 0.4232 = 2.8632 ;
-# MC  = -Y_rd = -N_vd ~= 0.76  (sway-yaw added-mass coupling)
 M11, M22, M33 = 21.7200, 29.2140, 2.8632
-MC         = 0.76
-DELTA      = M22 * M33 - MC * MC                 # determinant of the sway-yaw 2x2 block
+M23, M32   = 0.7626, 0.7614
+DELTA      = M22 * M33 - M23 * M32
 ARM        = 0.21                                # thruster lateral arm [m] (CAD: y = +/-0.21)
 FMAX       = 1.82 * G                            # 17.848 N per thruster (static)
 ALPHA_U    = FMAX / math.sqrt(2.0)              # inscribed-ellipse semi-axes
@@ -81,16 +80,15 @@ def damping(u, v, r, c):
 
 def nu_dot0(u, v, r):
     """Control-independent body acceleration (tau=0), coupled sway-yaw.
-    Solves M v_dot = -D(v)v (no separate Coriolis) with the coupled M."""
+    Solves M v_dot = -C(v)v - D(v)v with the coupled M."""
     X, Y, N = damping(u, v, r, TA)
-    # NO separate Coriolis: theta_anneal (CoG frame) is the total velocity-dependent
-    # reaction and already contains the vr/ur/uv coupling.  M v_dot = tau - D(v).
-    b_u = DAMP_SIGN * X
-    b_v = DAMP_SIGN * Y
-    b_r = DAMP_SIGN * N
+    a = M22 * v + M23 * r
+    b_u = DAMP_SIGN * X + a * r
+    b_v = DAMP_SIGN * Y - M11 * u * r
+    b_r = DAMP_SIGN * N - a * u + M11 * u * v
     du = b_u / M11
-    dv = (M33 * b_v - MC * b_r) / DELTA           # M^{-1} b  (sway-yaw block)
-    dr = (-MC * b_v + M22 * b_r) / DELTA
+    dv = (M33 * b_v - M23 * b_r) / DELTA
+    dr = (-M32 * b_v + M22 * b_r) / DELTA
     return du, dv, dr
 
 
@@ -123,11 +121,11 @@ def _R(c0, c1):
 
 def _cdirs(p):
     """Control costate directions with the COUPLED input matrix G:
-    tau_u acts on surge (1/M11); tau_r acts on yaw (M22/DELTA) AND sway (-MC/DELTA)."""
+    tau_u acts on surge (1/M11); tau_r acts on yaw (M22/DELTA) AND sway (-M23/DELTA)."""
     ci0 = p[:, IUI] / M11
-    ci1 = (M22 * p[:, IRI] - MC * p[:, IVI]) / DELTA
+    ci1 = (M22 * p[:, IRI] - M23 * p[:, IVI]) / DELTA
     ce0 = p[:, IUE] / M11
-    ce1 = (M22 * p[:, IRE] - MC * p[:, IVE]) / DELTA
+    ce1 = (M22 * p[:, IRE] - M23 * p[:, IVE]) / DELTA
     return ci0, ci1, ce0, ce1
 
 
@@ -226,8 +224,8 @@ def isaacs_checks(device, n=200, seed=0):
     e_ham = e_is = 0.0
     for k in range(n):
         base = float(P[k] @ a0[k])
-        ci0 = P[k,IUI]/M11; ci1 = (M22*P[k,IRI] - MC*P[k,IVI])/DELTA
-        ce0 = P[k,IUE]/M11; ce1 = (M22*P[k,IRE] - MC*P[k,IVE])/DELTA
+        ci0 = P[k,IUI]/M11; ci1 = (M22*P[k,IRI] - M23*P[k,IVI])/DELTA
+        ce0 = P[k,IUE]/M11; ce1 = (M22*P[k,IRE] - M23*P[k,IVE])/DELTA
         mn = (ci0*cu + ci1*cr).min(); mx = (ce0*cu + ce1*cr).max()
         e_ham = max(e_ham, abs(Hcf[k] - (base+mn+mx)))
         e_is = max(e_is, abs((base+mn+mx) - (base+mx+mn)))
@@ -301,7 +299,7 @@ def main():
     torch.manual_seed(args.seed)
 
     print("="*70)
-    print(f" device={device}  M=[[{M11},0,0],[0,{M22},{MC}],[0,{MC},{M33}]]  "
+    print(f" device={device}  M=[[{M11},0,0],[0,{M22},{M23}],[0,{M32},{M33}]]  "
           f"arm={ARM}  Fmax={FMAX:.3f}N  R={R_COLLIDE}  T={T_HORIZON}")
     eh, ei, w = isaacs_checks(device)
     print(f" Isaacs: |H-minmax|={eh:.2e}[{'PASS' if eh<1e-3 else 'FAIL'}]  "

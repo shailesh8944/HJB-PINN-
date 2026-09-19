@@ -29,7 +29,7 @@ The support function of this ellipse gives H in closed form with a smooth
 
 import numpy as np
 
-from relative_dynamics import IX, IY, IUI, IRI
+from relative_dynamics import IX, IY
 
 
 class HJBFormulation:
@@ -50,10 +50,6 @@ class HJBFormulation:
         self.alpha_r = d * Fmax / np.sqrt(2.0)            # yaw   semi-axis
         self.Sigma = np.array([self.alpha_u ** 2, self.alpha_r ** 2])   # diag entries
 
-        # pursuer mass entries needed for c = G_i^T p
-        self.M11_i = self.rel.pursuer.M11
-        self.M33_i = self.rel.pursuer.M33
-
     # -----------------------------------------------------------------------
     def terminal(self, zeta):
         """Signed distance to the capture disc: ell(zeta) = ||(X,Y)|| - rho."""
@@ -64,8 +60,8 @@ class HJBFormulation:
 
     # -----------------------------------------------------------------------
     def _costate_control_dir(self, p):
-        """c = G_i^T p = (p_{u_i}/M11_i, p_{r_i}/M33_i)."""
-        return np.array([p[IUI] / self.M11_i, p[IRI] / self.M33_i])
+        """Exact control direction c = G_i^T p, including sway-yaw coupling."""
+        return self.rel.G_matrix().T @ np.asarray(p)
 
     def hamiltonian(self, zeta, p):
         """

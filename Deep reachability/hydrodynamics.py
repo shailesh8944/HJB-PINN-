@@ -1,7 +1,7 @@
 """Hydrodynamic damping model (theta_anneal identification), shared by both
 vessels. Pure function of body-frame velocities (u,v,r) -> damping
 forces/moment and the resulting (control-independent) body acceleration."""
-from config import M11, M22, M33, MC, DELTA, DAMP_SIGN
+from config import M11, M22, M33, M23, M32, DELTA, DAMP_SIGN
 
 # theta_anneal damping (dimensional), identical for both vessels
 TA = dict(
@@ -32,14 +32,14 @@ def damping(u, v, r, c=TA):
 
 def nu_dot0(u, v, r):
     """Control-independent body acceleration (tau=0), coupled sway-yaw.
-    Solves M v_dot = -D(v)v (no separate Coriolis) with the coupled M."""
+    Solves M v_dot = -C(v)v - D(v)v with the same coupled M and
+    skew-symmetric Coriolis construction as src/dynamics.py."""
     X, Y, N = damping(u, v, r, TA)
-    # NO separate Coriolis: theta_anneal (CoG frame) is the total velocity-dependent
-    # reaction and already contains the vr/ur/uv coupling.  M v_dot = tau - D(v).
-    b_u = DAMP_SIGN * X
-    b_v = DAMP_SIGN * Y
-    b_r = DAMP_SIGN * N
+    a = M22 * v + M23 * r
+    b_u = DAMP_SIGN * X + a * r
+    b_v = DAMP_SIGN * Y - M11 * u * r
+    b_r = DAMP_SIGN * N - a * u + M11 * u * v
     du = b_u / M11
-    dv = (M33 * b_v - MC * b_r) / DELTA           # M^{-1} b  (sway-yaw block)
-    dr = (-MC * b_v + M22 * b_r) / DELTA
+    dv = (M33 * b_v - M23 * b_r) / DELTA
+    dr = (-M32 * b_v + M22 * b_r) / DELTA
     return du, dv, dr

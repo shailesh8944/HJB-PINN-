@@ -10,8 +10,8 @@ differential game:
 
     a0(zeta) : pure drift = relative kinematics + control-INDEPENDENT part of both
                vessels' velocity dynamics (no APF, no thrust)
-    G_i      : pursuer input matrix (rows u_i, r_i)
-    G_e      : evader  input matrix (rows u_e, r_e)
+    G_i      : pursuer input matrix (rows u_i, v_i, r_i)
+    G_e      : evader  input matrix (rows u_e, v_e, r_e)
 
 Isaacs Hamiltonian (pursuer minimises, evader maximises); the controls enter
 additively and separately, so the min and max decouple and min-max = max-min:
@@ -19,8 +19,10 @@ additively and separately, so the min and max decouple and min-max = max-min:
     H(zeta,p) = <p, a0> + [ p^T G_i u0 - R_i(p) ]        (pursuer, min)
                         + [ p^T G_e u0 + R_e(p) ]        (evader, max)
 
-    R_i = sqrt(Sig0 (p_ui/M11)^2 + Sig1 (p_ri/M33)^2 + eps)
-    R_e = sqrt(Sig0 (p_ue/M11)^2 + Sig1 (p_re/M33)^2 + eps)
+    c_r_i = (M22*p_ri - M23*p_vi)/DELTA
+    c_r_e = (M22*p_re - M23*p_ve)/DELTA
+    R_i = sqrt(Sig0 (p_ui/M11)^2 + Sig1 c_r_i^2 + eps)
+    R_e = sqrt(Sig0 (p_ue/M11)^2 + Sig1 c_r_e^2 + eps)
 
 Both vessels use the same inscribed-ellipse actuator set (Sig0, Sig1, offset u0)
 built in the base class HJBTorch. The value function's zero-sublevel set {V<=0}

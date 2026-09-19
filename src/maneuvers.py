@@ -8,10 +8,8 @@ DIFFERENTIAL dF (kgf). With a base throttle T0 on both:
     F_port = clip(T0 - dF/2, 0, Fmax) ,  F_stbd = clip(T0 + dF/2, 0, Fmax)
 so dF > 0 turns the bow to starboard (positive yaw).
 
-MODEL: M v_dot = tau - D(v), with D = theta_anneal (identified at the centre of
-mass as the TOTAL velocity-dependent reaction) and NO separate Coriolis term
-(adding one double-counts the coupling the polynomial already contains). With this
-correction the manoeuvres are clean and course-stable across the full thrust range.
+MODEL: M v_dot = tau - C(v)v - D(v)v, with D = theta_anneal representing
+the identified damping vector only. Coriolis is enabled from vessel_config.yaml.
 
 Outputs: outputs/manoeuvre_*.png and CSVs.
 """
@@ -143,9 +141,7 @@ def main():
     ax.axhline(0,color="k",lw=.6); ax.axvline(0,color="k",lw=.6)
     ax.set_xlabel("thrust differential dF [kgf]  (rudder analogue)")
     ax.set_ylabel("steady yaw rate r [deg/s]")
-    ax.set_title("Dieudonne spiral (corrected model, no double-counted Coriolis):\n"
-                 "up & down sweeps overlap and pass through the origin => COURSE-STABLE,\n"
-                 "single-valued, no hysteresis.")
+    ax.set_title("Dieudonne spiral (full M v_dot = tau - C(v)v - D(v)v)")
     ax.grid(True, alpha=.3); ax.legend()
     fig.tight_layout(); fig.savefig(os.path.join(OUT,"manoeuvre_spiral.png"), dpi=130); plt.close(fig)
 

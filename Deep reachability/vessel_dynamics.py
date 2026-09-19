@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from config import (IX, IY, IPSI, IUE, IVE, IUI, IVI, IRE, IRI,
-                     M11, M22, M33, MC, DELTA, ARM, FMAX, ALPHA_U, ALPHA_R,
+                     M11, M22, M33, M23, M32, DELTA, ARM, FMAX, ALPHA_U, ALPHA_R,
                      SIG0, SIG1, EPS_H, R_COLLIDE)
 from hydrodynamics import nu_dot0
 
@@ -40,11 +40,11 @@ def _R(c0, c1):
 
 def _cdirs(p):
     """Control costate directions with the COUPLED input matrix G:
-    tau_u acts on surge (1/M11); tau_r acts on yaw (M22/DELTA) AND sway (-MC/DELTA)."""
+    tau_u acts on surge (1/M11); tau_r acts on yaw (M22/DELTA) AND sway (-M23/DELTA)."""
     ci0 = p[:, IUI] / M11
-    ci1 = (M22 * p[:, IRI] - MC * p[:, IVI]) / DELTA
+    ci1 = (M22 * p[:, IRI] - M23 * p[:, IVI]) / DELTA
     ce0 = p[:, IUE] / M11
-    ce1 = (M22 * p[:, IRE] - MC * p[:, IVE]) / DELTA
+    ce1 = (M22 * p[:, IRE] - M23 * p[:, IVE]) / DELTA
     return ci0, ci1, ce0, ce1
 
 
@@ -89,8 +89,8 @@ def isaacs_checks(device, n=200, seed=0):
     e_ham = e_is = 0.0
     for k in range(n):
         base = float(P[k] @ a0[k])
-        ci0 = P[k,IUI]/M11; ci1 = (M22*P[k,IRI] - MC*P[k,IVI])/DELTA
-        ce0 = P[k,IUE]/M11; ce1 = (M22*P[k,IRE] - MC*P[k,IVE])/DELTA
+        ci0 = P[k,IUI]/M11; ci1 = (M22*P[k,IRI] - M23*P[k,IVI])/DELTA
+        ce0 = P[k,IUE]/M11; ce1 = (M22*P[k,IRE] - M23*P[k,IVE])/DELTA
         mn = (ci0*cu + ci1*cr).min(); mx = (ce0*cu + ce1*cr).max()
         e_ham = max(e_ham, abs(Hcf[k] - (base+mn+mx)))
         e_is = max(e_is, abs((base+mn+mx) - (base+mx+mn)))

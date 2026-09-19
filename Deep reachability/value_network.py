@@ -1,12 +1,13 @@
-"""SIREN value network with an exact-boundary-condition head:
-V(zeta,t) = ell(zeta) + t*softplus(N(zeta,t)), which guarantees V(.,0)=ell
-exactly and the V<=ell tube property by construction."""
+"""Direct sinusoidal value network used by the DeepReach paper.
+
+The network predicts V_theta(z,t) directly.  Its terminal condition is learned
+from the paper's terminal-value loss; it is not imposed by an ExactBC wrapper.
+"""
 import math
 import torch
 import torch.nn as nn
 
 from config import IPSI
-from vessel_dynamics import terminal
 
 
 class Sine(nn.Module):
@@ -43,16 +44,6 @@ class SIREN(nn.Module):
         return torch.cat(cols, 1)
 
     def forward(self, x): return self.net(self._feat(x))
-
-
-class ExactBCValue(nn.Module):
-    """V(zeta,t) = ell(zeta) + t*softplus(N):  exact terminal V(.,0)=ell and
-    tube property V<=ell by construction."""
-    def __init__(self, siren): super().__init__(); self.siren = siren
-    def forward(self, inp):
-        z, t = inp[:, :9], inp[:, 9]
-        N = self.siren(inp).squeeze(1)
-        return (terminal(z) + t * torch.nn.functional.softplus(N)).unsqueeze(1)
 
 
 def value_and_grads(net, z, t):

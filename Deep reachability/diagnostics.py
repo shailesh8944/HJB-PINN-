@@ -6,7 +6,8 @@ import torch
 from config import IX, IY, IPSI, IUE, IUI, R_COLLIDE, T_HORIZON
 
 
-def save_map(net, path, device, approach=0.8, ng=160, hist=None):
+def save_map(net, path, device, approach=0.8, ng=160, hist=None,
+             time_remaining=T_HORIZON):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     lo, hi = -15.0, 15.0
@@ -16,7 +17,9 @@ def save_map(net, path, device, approach=0.8, ng=160, hist=None):
     Z[:, IX] = XX.ravel(); Z[:, IY] = YY.ravel()
     Z[:, IPSI] = np.pi                     # head-on
     Z[:, IUE] = approach; Z[:, IUI] = approach
-    tt = np.full((ng*ng, 1), -T_HORIZON, np.float32)
+    if not 0.0 <= time_remaining <= T_HORIZON:
+        raise ValueError("time_remaining must lie in [0, T_HORIZON]")
+    tt = np.full((ng*ng, 1), -time_remaining, np.float32)
     inp = torch.tensor(np.hstack([Z, tt]), device=device)
     with torch.no_grad():
         V = net(inp).float().cpu().numpy().reshape(ng, ng)
@@ -28,7 +31,8 @@ def save_map(net, path, device, approach=0.8, ng=160, hist=None):
     a0.plot(R_COLLIDE*np.sin(th), R_COLLIDE*np.cos(th), "b--", lw=1.2, label=f"collision R={R_COLLIDE:.0f} m")
     a0.plot(0, 0, "ks", ms=7, label="pursuer"); a0.axis("equal")
     a0.set_xlabel("Y rel [m]"); a0.set_ylabel("X rel [m]")
-    a0.set_title("Head-on: danger (red) / safe (green), V=0 barrier"); a0.legend(loc="upper right")
+    a0.set_title(f"Head-on, time remaining={time_remaining:.1f}s: danger (red) / safe (green)")
+    a0.legend(loc="upper right")
     if hist:
         its = [h[0] for h in hist]; ls = [max(h[1],1e-12) for h in hist]
         ax[1].semilogy(its, ls); ax[1].set_xlabel("iter"); ax[1].set_ylabel("HJI residual (log)")

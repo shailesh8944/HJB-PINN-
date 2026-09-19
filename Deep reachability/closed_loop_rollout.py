@@ -11,9 +11,10 @@ import os, sys, glob, time, numpy as np, torch
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from config import IX, IY, IPSI, IUE, IVE, IUI, IVI, IRE, IRI, M11, M33, R_COLLIDE, T_HORIZON
+from config import (IX, IY, IPSI, IUE, IVE, IUI, IVI, IRE, IRI,
+                    M11, M22, M23, DELTA, R_COLLIDE, T_HORIZON)
 from vessel_dynamics import drift0, optimal_controls
-from value_network import SIREN, ExactBCValue
+from value_network import SIREN
 
 if len(sys.argv) > 1:
     ckpt_path = sys.argv[1]
@@ -26,10 +27,13 @@ else:
 device = "cuda" if torch.cuda.is_available() else "cpu"
 lo = [-15, -15, -np.pi, -0.2, -0.6, -0.2, -0.6, -1.5, -1.5, -T_HORIZON]
 hi = [ 15,  15,  np.pi,  1.2,  0.6,  1.2,  0.6,  1.5,  1.5, 0.0]
-net = ExactBCValue(SIREN(lo, hi, 512, 3)).to(device)
 ck = torch.load(ckpt_path, map_location=device)
+state = ck["net"]
+hidden = state["net.0.weight"].shape[0]
+layers = len([key for key in state if key.startswith("net.") and key.endswith(".weight")]) - 1
+net = SIREN(lo, hi, hidden, layers).to(device)
 net.load_state_dict(ck["net"]); net.eval()
-print(f"loaded {ckpt_path}  (iter {ck['iter']})")
+print(f"loaded {ckpt_path}  (iter {ck['iter']}, direct-SIREN DeepReach model)")
 
 # ---- initial states: same head-on slice as danger_safe.png ----
 ng, approach = 46, 0.8
@@ -67,9 +71,11 @@ for step in range(steps):
         ti, te = optimal_controls(gradV)
         adot = a0.clone()
         adot[:, IUE] += te[:, 0] / M11
-        adot[:, IRE] += te[:, 1] / M33
+        adot[:, IVE] -= M23 * te[:, 1] / DELTA
+        adot[:, IRE] += M22 * te[:, 1] / DELTA
         adot[:, IUI] += ti[:, 0] / M11
-        adot[:, IRI] += ti[:, 1] / M33
+        adot[:, IVI] -= M23 * ti[:, 1] / DELTA
+        adot[:, IRI] += M22 * ti[:, 1] / DELTA
         z = z + dt * adot
         t_elapsed = t_elapsed + dt
         sep = torch.sqrt(z[:, IX]**2 + z[:, IY]**2 + 1e-12)

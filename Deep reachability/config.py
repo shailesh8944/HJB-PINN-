@@ -6,16 +6,16 @@ import math
 G          = 9.80665
 MASS       = 20.0
 
-# COUPLED effective mass matrix (body origin at centre of mass):
-#   M = [[M11, 0,   0  ],
-#        [ 0,  M22, MC ],
-#        [ 0,  MC,  M33]]
+# COUPLED effective mass matrix (body origin at centre of mass), identical to
+# config/vessel_config.yaml and src/dynamics.py:
+#   M = [[M11, 0,   0   ],
+#        [ 0,  M22, M23 ],
+#        [ 0,  M32, M33 ]]
 # M11 = m - X_ud = 21.72 ; M22 = m - Y_vd = 29.214 ;
 # M33 = Izz - N_rd = 2.44(CAD) + 0.4232 = 2.8632 ;
-# MC  = -Y_rd = -N_vd ~= 0.76  (sway-yaw added-mass coupling)
 M11, M22, M33 = 21.7200, 29.2140, 2.8632
-MC         = 0.76
-DELTA      = M22 * M33 - MC * MC                 # determinant of the sway-yaw 2x2 block
+M23, M32   = 0.7626, 0.7614
+DELTA      = M22 * M33 - M23 * M32               # determinant of the sway-yaw 2x2 block
 ARM        = 0.21                                # thruster lateral arm [m] (CAD: y = +/-0.21)
 FMAX       = 1.82 * G                            # 17.848 N per thruster (static)
 ALPHA_U    = FMAX / math.sqrt(2.0)               # inscribed-ellipse semi-axes

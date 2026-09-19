@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dynamics import VesselDynamics                 # noqa: E402
 from thruster import Thruster                       # noqa: E402
 from apf_evader import APFEvader, wrap_pi           # noqa: E402
-from relative_dynamics import RelativeDynamics, IX, IY, IPSI, IUE, IUI, IRI  # noqa: E402
+from relative_dynamics import RelativeDynamics, IX, IY, IPSI, IUE, IUI, IVI, IRI  # noqa: E402
 from hjb import HJBFormulation                      # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -104,11 +104,12 @@ def self_checks(B):
         worst = max(worst, -min(Fs, Fp, 0.0), max(Fs - Fmax, Fp - Fmax, 0.0))
     results.append(("optimal control realisable (ellipse subset diamond)", worst, worst < 1e-9))
 
-    # (d) G structure
-    Gok = (abs(G[IUI, 0] - 1.0 / rel.pursuer.M11) < 1e-15 and
-           abs(G[IRI, 1] - 1.0 / rel.pursuer.M33) < 1e-15 and
-           np.count_nonzero(G) == 2)
-    results.append(("G_i structure (only u_i, r_i rows)", 0.0, Gok))
+    # (d) G is exactly the relevant columns of the full coupled M^{-1}
+    Gok = (abs(G[IUI, 0] - rel.pursuer.Minv[0, 0]) < 1e-15 and
+           abs(G[IVI, 1] - rel.pursuer.Minv[1, 2]) < 1e-15 and
+           abs(G[IRI, 1] - rel.pursuer.Minv[2, 2]) < 1e-15 and
+           np.count_nonzero(G) == 3)
+    results.append(("G_i structure matches coupled M^{-1}", 0.0, Gok))
     return results
 
 
@@ -167,7 +168,7 @@ def main():
     print("=" * 70)
     print(" HJB / APF pursuit formulation — initial setup")
     print("=" * 70)
-    print(f" pursuer M = diag({rel.pursuer.M11:.3f}, {rel.pursuer.M22:.3f}, {rel.pursuer.M33:.3f})")
+    print(" pursuer M =", np.array2string(rel.pursuer.M, precision=4))
     print(f" ellipse semi-axes: surge {hjb.alpha_u:.3f} N, yaw {hjb.alpha_r:.3f} N.m; "
           f"centre u0 = ({hjb.u0[0]:.3f}, 0) N")
     print(f" capture radius rho = {hjb.rho} m, horizon T = {hjb.T} s")

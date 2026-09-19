@@ -14,8 +14,8 @@ The system is control-affine in the PURSUER generalised force u_i = (tau_u^i, ta
 
 The drift abar collects (a) the relative kinematics, (b) the evader velocity
 dynamics closed by the APF law, and (c) the CONTROL-INDEPENDENT part of the
-pursuer velocity dynamics. The input matrix G_i injects the pursuer thrust into
-the u_i and r_i rows only.
+pursuer velocity dynamics. With coupled sway-yaw added mass, yaw moment enters
+both the v_i and r_i rows through the same M^{-1} used by VesselDynamics.
 
 Relative kinematics (pursuer body frame, evader at (X, Y)):
     X_dot     = u_e cos(psi_rel) - v_e sin(psi_rel) - u_i + r_i * Y
@@ -47,10 +47,11 @@ class RelativeDynamics:
         self.evader = evader_dyn
         self.apf = apf_evader
 
-        # pursuer input matrix: tau_u^i -> u_i row (1/M11_i), tau_r^i -> r_i row (1/M33_i)
+        # Exact control columns from nu_dot = nu_dot0 + M^{-1}[tau_u,0,tau_r].
         self.G = np.zeros((9, 2))
-        self.G[IUI, 0] = 1.0 / self.pursuer.M11
-        self.G[IRI, 1] = 1.0 / self.pursuer.M33
+        self.G[IUI, 0] = self.pursuer.Minv[0, 0]
+        self.G[IVI, 1] = self.pursuer.Minv[1, 2]
+        self.G[IRI, 1] = self.pursuer.Minv[2, 2]
 
     # -----------------------------------------------------------------------
     def G_matrix(self):

@@ -22,14 +22,15 @@ avoidance), by solving the backward reachable tube of the collision set.
 ## 2. The model we locked (verified in chat)
 
 ### Rigid body and mass
-- Mass m = 20 kg; yaw inertia I_z = 1.88 kg·m² (user-provided).
+- Mass m = 20 kg; yaw inertia I_z = 2.44 kg·m² (SolidWorks CAD at CoG).
 - Added mass supplied as **non-dimensional** hydrodynamic derivatives (from a
   reference vessel's `hyd.yml`), redimensionalized by the prime (bis) system at
-  ρ = 1000 kg/m³, L = 1.0 m: X_u̇ = −1.72 kg, Y_v̇ = −9.214 kg, N_ṙ = −0.4232 kg·m².
+  ρ = 1000 kg/m³, L = 1.0 m: X_u̇ = −1.72 kg, Y_v̇ = −9.214 kg,
+  Y_ṙ = −0.7626 kg·m, N_v̇ = −0.7614 kg·m, N_ṙ = −0.4232 kg·m².
   Added mass is a pure inertia — it carries **no** velocity dependence (that lives
   in the Coriolis and damping terms).
-- Effective mass matrix (kept **diagonal** for now, cross terms dropped):
-  **M = diag(21.72, 29.214, 2.3032)**.
+- Effective coupled mass matrix:
+  **M = [[21.72,0,0],[0,29.214,0.7626],[0,0.7614,2.8632]]**.
 
 ### Damping
 - Identified 34-term polynomial D(ν)ν = [X_D, Y_D, N_D], set **θ_anneal**
@@ -37,7 +38,7 @@ avoidance), by solving the backward reachable tube of the collision set.
   (damping_sign = −1). Rigid-body + added-mass Coriolis C(ν)ν kept.
 
 ### Thrusters (control)
-- Two forward-only thrusters, arm d = 0.20 m, F_max = 1.82 kgf = 17.85 N
+- Two forward-only thrusters, arm d = 0.21 m, F_max = 1.82 kgf = 17.85 N
   (from the T200 16 V bollard curve). Allocation τ_u = F_p + F_s,
   τ_r = d(F_s − F_p).
 - Actuator set modelled as the largest inscribed **ellipse** of the thrust
@@ -58,9 +59,9 @@ avoidance), by solving the backward reachable tube of the collision set.
 ### Neural network
 - SIREN (sinusoidal) network with heading encoded as (cos ψ, sin ψ) so the value
   is periodic by construction.
-- Exact-boundary-condition value V(ζ,t) = ℓ(ζ) + t·softplus(N(ζ,t)): the terminal
-  condition and the tube property V ≤ ℓ hold exactly, so training is purely on the
-  HJI residual, with a backward-in-time curriculum.
+- Direct SIREN value Vθ(ζ,t), trained as in the cited DeepReach paper: terminal
+  L1 pretraining of Vθ(ζ,0)=ℓ(ζ), then uniform-state HJI-VI curriculum training
+  with the terminal and PDE losses together.
 
 ---
 
@@ -92,8 +93,8 @@ Everything lives in the git repo (`D:\HJB PINN` on Windows →
   the locked numbers; needs only torch/numpy/matplotlib). Use this for the run.
 - `src/train_hji.py` — config-driven HJI trainer (checkpoint/resume).
 - `src/hji_torch.py`, `src/hjb_torch.py`, `src/pinn.py` — game physics + network.
-- `config/vessel_config.yaml` — the locked parameters (I_z = 1.88, dimensional
-  diagonal added mass, θ_anneal).
+- `config/vessel_config.yaml` — the locked parameters (I_z = 2.44, dimensional
+  coupled added mass, Coriolis enabled, θ_anneal damping).
 - `config/game_config.yaml` — collision radius 1 m, horizon 20 s.
 - 3-DOF simulation + checks: `src/dynamics.py`, `src/verify.py`, `src/simulate.py`,
   `src/thruster.py`, `src/controller.py`, `src/track_waypoints.py`.

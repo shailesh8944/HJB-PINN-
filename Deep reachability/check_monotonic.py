@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 from config import IX, IY, IPSI, IUE, IUI, T_HORIZON
-from value_network import SIREN, ExactBCValue
+from value_network import SIREN
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -22,7 +22,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 def load(path):
     lo = [-15, -15, -np.pi, -0.2, -0.6, -0.2, -0.6, -1.5, -1.5, -T_HORIZON]
     hi = [ 15,  15,  np.pi,  1.2,  0.6,  1.2,  0.6,  1.5,  1.5, 0.0]
-    net = ExactBCValue(SIREN(lo, hi, 512, 3)).to(device)
+    net = SIREN(lo, hi, 512, 3).to(device)
     ck = torch.load(path, map_location=device)
     net.load_state_dict(ck["net"]); net.eval()
     return net, ck["iter"]

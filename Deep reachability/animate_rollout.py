@@ -31,9 +31,9 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 from config import (IX, IY, IPSI, IUE, IVE, IUI, IVI, IRE, IRI,
-                     M11, M33, R_COLLIDE, T_HORIZON)
+                     M11, M22, M23, DELTA, R_COLLIDE, T_HORIZON)
 from vessel_dynamics import drift0, optimal_controls
-from value_network import SIREN, ExactBCValue
+from value_network import SIREN
 
 PRESETS = {
     # X, Y, psi_rel, ue, ve, ui, vi, re, ri
@@ -53,8 +53,11 @@ def find_latest_ckpt(out_dir="out_hji"):
 def load_net(ckpt_path, device):
     lo = [-15, -15, -np.pi, -0.2, -0.6, -0.2, -0.6, -1.5, -1.5, -T_HORIZON]
     hi = [ 15,  15,  np.pi,  1.2,  0.6,  1.2,  0.6,  1.5,  1.5, 0.0]
-    net = ExactBCValue(SIREN(lo, hi, 512, 3)).to(device)
     ck = torch.load(ckpt_path, map_location=device)
+    state = ck["net"]
+    hidden = state["net.0.weight"].shape[0]
+    layers = len([key for key in state if key.startswith("net.") and key.endswith(".weight")]) - 1
+    net = SIREN(lo, hi, hidden, layers).to(device)
     net.load_state_dict(ck["net"]); net.eval()
     return net, ck["iter"]
 
@@ -91,9 +94,11 @@ def rollout(net, device, z0, dt=0.02, tmax=T_HORIZON):
             ti, te = optimal_controls(gradV)
             adot = a0.clone()
             adot[:, IUE] += te[:, 0] / M11
-            adot[:, IRE] += te[:, 1] / M33
+            adot[:, IVE] -= M23 * te[:, 1] / DELTA
+            adot[:, IRE] += M22 * te[:, 1] / DELTA
             adot[:, IUI] += ti[:, 0] / M11
-            adot[:, IRI] += ti[:, 1] / M33
+            adot[:, IVI] -= M23 * ti[:, 1] / DELTA
+            adot[:, IRI] += M22 * ti[:, 1] / DELTA
 
             ui, vi, ri = z[:, IUI], z[:, IVI], z[:, IRI]
             xi = xi + dt * (ui*cpi - vi*spi)
@@ -183,7 +188,7 @@ def main():
 
     ckpt_path = args.ckpt or find_latest_ckpt(args.ckpt_dir)
     net, ckpt_iter = load_net(ckpt_path, args.device)
-    print(f"loaded {ckpt_path}  (iter {ckpt_iter})")
+    print(f"loaded {ckpt_path}  (iter {ckpt_iter}, direct-SIREN DeepReach model)")
 
     p = dict(PRESETS[args.preset])
     overrides = dict(x0=args.x0, y0=args.y0, psi0=args.psi0, ue0=args.ue0, ve0=args.ve0,
